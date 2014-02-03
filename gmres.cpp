@@ -18,10 +18,7 @@ int gmres(ublas::vector<type> &y, ublas::matrix<type> &A, ublas::vector<type> &x
 
     typedef vector<type>                Vec;
     typedef matrix<type>                Mat;
-    typedef matrix_row   <matrix<type>> MatRow;
-    typedef matrix_column<matrix<type>> MatCol;
     typedef matrix_range <matrix<type>> SubMat;
-    typedef vector_range <vector<type>> SubVec;
 
     int size = y.size();
     unit_vector<type> e_1(size + 1, 0);
@@ -45,7 +42,7 @@ int gmres(ublas::vector<type> &y, ublas::matrix<type> &A, ublas::vector<type> &x
     {
         type beta = norm_2(r_i);
         std::cout << "beta = " << beta << std::endl;
-        if(beta < 1e-8) break;
+        if(beta / norm_2(y) < 1e-8) break;
 
         // Add v_i to V
         row(V, i) = v_i;
@@ -54,7 +51,7 @@ int gmres(ublas::vector<type> &y, ublas::matrix<type> &A, ublas::vector<type> &x
         SubMat V_i(V, range(0, i + 1), range(0, size));
         SubMat R_i(R, range(0, i + 2), range(0, i + 1));
         Vec    tmp1(prod(A, v_i));
-        Vec    tmp2 = prod(V_i, tmp1);
+        Vec    tmp2(prod(V_i, tmp1));
 
         #pragma omp parallel for
         for(int j = 0; j < tmp2.size(); j++)
@@ -75,32 +72,30 @@ int gmres(ublas::vector<type> &y, ublas::matrix<type> &A, ublas::vector<type> &x
         // Apply Givens rotation
         for(int j = 0; j < i; j++)
         {
-            type temp   = c(j) * R(j, i) + s(j) * R(j + 1, i);
-            R(j + 1, i) = c(j) * R(j + 1, i) - s(j) * R(j ,i);
+            type temp   = c(j) * R(j, i) - s(j) * R(j + 1, i);
+            R(j + 1, i) = c(j) * R(j + 1, i) + s(j) * R(j ,i);
             R(j, i)     = temp;
         }
 
-        type ratio = 1.0 / std::sqrt(R(i + 1, i) * R(i + 1, i) + R(i, i) * R(i, i));
+        type ratio = std::sqrt(R(i + 1, i) * R(i + 1, i) + R(i, i) * R(i, i));
 
-        c(i) =  R(i, i) * ratio;
-        s(i) = -R(i + 1, i) * ratio;
+        c(i) =  R(i, i) / ratio;
+        s(i) = -R(i + 1, i) / ratio;
 
-        // R(i, i) = r^2 - h^2
-        R(i, i)     = R(i, i) * R(i ,i) - R(i + 1, i) * R(i + 1, i);
-        R(i, i)    *= ratio;
+        // R(i, i) = sqrt(r^2 + h^2)
+        R(i, i)     = ratio;
         R(i + 1, i) = (type) 0;
 
         // Apply rotation on e_i
-        type rot_tmp = c(i) * e_i(i) + s(i) * e_i(i + 1);
-        e_i(i + 1)   = c(i) * e_i(i + 1) - s(i) * e_i(i);
+        type rot_tmp = c(i) * e_i(i) - s(i) * e_i(i + 1);
+        e_i(i + 1)   = c(i) * e_i(i + 1) + s(i) * e_i(i);
         e_i(i)       = rot_tmp;
 
         // Solve for y_i
-        Vec y_i(size);
-        y_i = solve(subrange(R, 0, i + 1, 0, i + 1), beta * subrange(e_i, 0, i + 1), upper_tag());
+        Vec y_i(solve(subrange(R, 0, i + 1, 0, i + 1), beta * subrange(e_i, 0, i + 1), upper_tag()));
 
         // Update x
-        noalias(x_i) += prod(trans(V_i), y_i);
+        noalias(x_i) += prod(y_i, V_i);
         noalias(r_i)  = y - prod(A, x_i);
     }
 
@@ -144,7 +139,8 @@ int main(int argc, char **argv)
     else
     {
         double r = norm_2(y - prod(A, x));
-        std::cout << "r = " << r << std::endl;
+        std::cout << "r   = " << r << std::endl;
+        std::cout << "err = " << r / norm_2(y) << std::endl;
     }
 
     std::cout << x << std::endl;
