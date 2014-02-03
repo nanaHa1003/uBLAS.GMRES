@@ -1,5 +1,5 @@
 CC=g++-4.9
-CFLAGS=--std=c++0x -O3 -fopenmp 
+CFLAGS=--std=c++0x -O3 -fopenmp
 INCLUDE=-I/usr/local/include
 LINK=-L/usr/local/lib
 

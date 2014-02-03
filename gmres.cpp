@@ -42,7 +42,7 @@ int gmres(ublas::vector<type> &y, ublas::matrix<type> &A, ublas::vector<type> &x
     {
         type beta = norm_2(r_i);
         std::cout << "beta = " << beta << std::endl;
-        if(beta / norm_2(y) < 1e-8) break;
+        if(e_i(i) / norm_2(y) < 1e-8) break;
 
         // Add v_i to V
         row(V, i) = v_i;
