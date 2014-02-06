@@ -1,11 +1,11 @@
 CC=g++-4.9
 CFLAGS=--std=c++0x -O3 -fopenmp -DNDEBUG
 INCLUDE=-I/usr/local/include
-LINK=-L/usr/local/lib
+LINK=
 
-all: gmres_test
+all: gmres
 
-gmres_test: gmres.cpp
+gmres: gmres.cpp
 	$(CC) $(CFLAGS) -o $@ $^ $(INCLUDE) $(LINK)
 
 clean:

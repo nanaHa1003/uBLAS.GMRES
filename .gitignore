@@ -1,6 +1,7 @@
 # My ignore files
+.DS_Store
 gmres_test
-gen.cpp
+Gen.cpp
 a.out
 *.mtx
 

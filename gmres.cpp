@@ -12,7 +12,7 @@
 using namespace boost::numeric;
 
 template<class type>
-int gmres(ublas::vector<type> &y, ublas::matrix<type> &A, ublas::vector<type> &x)
+int gmres(ublas::vector<type> &y, ublas::matrix<type> &A, ublas::vector<type> &x, type tol)
 {
     using namespace ublas;
 
@@ -27,7 +27,7 @@ int gmres(ublas::vector<type> &y, ublas::matrix<type> &A, ublas::vector<type> &x
     Vec x_i(x);
     Vec r_i = y - prod(A, x);
     Vec v_i = r_i / norm_2(r_i);
-    Vec e_i = e_1;
+    Vec e_i = e_1 * norm_2(r_i);
 
     // Givens rotation args
     Vec c(size + 1, 0);
@@ -40,9 +40,7 @@ int gmres(ublas::vector<type> &y, ublas::matrix<type> &A, ublas::vector<type> &x
     // size can be subsitude by m
     for(int i = 0; i < size; i++)
     {
-        type beta = norm_2(r_i);
-        std::cout << "beta = " << beta << std::endl;
-        if(e_i(i) / norm_2(y) < 1e-8) break;
+        if(norm_2(r_i) < tol) break;
 
         // Add v_i to V
         row(V, i) = v_i;
@@ -50,20 +48,12 @@ int gmres(ublas::vector<type> &y, ublas::matrix<type> &A, ublas::vector<type> &x
         // Build R_i
         SubMat V_i(V, range(0, i + 1), range(0, size));
         SubMat R_i(R, range(0, i + 2), range(0, i + 1));
-        Vec    tmp1(prod(A, v_i));
-        Vec    tmp2(prod(V_i, tmp1));
 
-        #pragma omp parallel for
-        for(int j = 0; j < tmp2.size(); j++)
-        {
-            R(j, i) = tmp2(j);
-        }
-
-        // Update v_i
-        noalias(v_i) = prod(A, row(V, i));
+        v_i = prod(A, v_i);
         for(int j = 0; j <= i; j++)
         {
-            v_i -= R(j, i) * row(V, i);
+            type h = inner_prod(v_i, row(V, j));
+            v_i   -= h * row(V, j);
         }
 
         R(i + 1, i) = norm_2(v_i);
@@ -92,11 +82,11 @@ int gmres(ublas::vector<type> &y, ublas::matrix<type> &A, ublas::vector<type> &x
         e_i(i)       = rot_tmp;
 
         // Solve for y_i
-        Vec y_i(solve(subrange(R, 0, i + 1, 0, i + 1), beta * subrange(e_i, 0, i + 1), upper_tag()));
+        Vec y_i(solve(subrange(R, 0, i + 1, 0, i + 1), subrange(e_i, 0, i + 1), upper_tag()));
 
         // Update x
-        noalias(x_i) += prod(y_i, V_i);
-        noalias(r_i)  = y - prod(A, x_i);
+        x_i += prod(y_i, V_i);
+        r_i  = y - prod(A, x_i);
     }
 
     x = x_i;
@@ -132,7 +122,7 @@ int main(int argc, char **argv)
     }
 
     // GMRES
-    if(gmres(y, A, x) != 0)
+    if(gmres(y, A, x, 1e-8) != 0)
     {
         std::cout << "GMRES not converged" << std::endl;
     }
