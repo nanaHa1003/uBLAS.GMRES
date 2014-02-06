@@ -52,8 +52,8 @@ int gmres(ublas::vector<type> &y, ublas::matrix<type> &A, ublas::vector<type> &x
         v_i = prod(A, v_i);
         for(int j = 0; j <= i; j++)
         {
-            type h = inner_prod(v_i, row(V, j));
-            v_i   -= h * row(V, j);
+            R(j, i) = inner_prod(v_i, row(V, j));
+            v_i    -= R(j, i) * row(V, j);
         }
 
         R(i + 1, i) = norm_2(v_i);
