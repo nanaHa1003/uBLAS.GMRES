@@ -9,4 +9,4 @@ gmres: gmres.cpp
 	$(CC) $(CFLAGS) -o $@ $^ $(INCLUDE) $(LINK)
 
 clean:
-	$(RM) -f gmres_test *.o
+	$(RM) -f gmres *.o

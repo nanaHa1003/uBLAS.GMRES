@@ -2,6 +2,7 @@
 #include <vector>
 #include <fstream>
 #include <string>
+#include <algorithm>
 #include <boost/numeric/ublas/vector.hpp>
 #include <boost/numeric/ublas/matrix.hpp>
 #include <boost/numeric/ublas/vector_proxy.hpp>
@@ -12,16 +13,25 @@
 using namespace boost::numeric;
 
 template<class type>
-int gmres(ublas::vector<type> &y, ublas::matrix<type> &A, ublas::vector<type> &x, type tol)
+inline static void rotate(type c, type s, type &r, type &h)
+{
+    type tmp = c * r + s * h;
+    h        = c * h - s * r;
+    r        = tmp;
+}
+
+template<class type>
+int gmres(ublas::vector<type> &y, ublas::matrix<type> &A, ublas::vector<type> &x, type tol, size_t m)
 {
     using namespace ublas;
 
-    typedef vector<type>                Vec;
-    typedef matrix<type>                Mat;
-    typedef matrix_range <matrix<type>> SubMat;
+    typedef vector<type> Vec;
+    typedef matrix<type> Mat;
 
     int size = y.size();
     unit_vector<type> e_1(size + 1, 0);
+
+    m = (m > size) ?size :m;
 
     // Lower case name for vector
     Vec x_i(x);
@@ -30,63 +40,73 @@ int gmres(ublas::vector<type> &y, ublas::matrix<type> &A, ublas::vector<type> &x
     Vec e_i = e_1 * norm_2(r_i);
 
     // Givens rotation args
-    Vec c(size + 1, 0);
-    Vec s(size + 1, 0);
+    Vec c(m + 1, 0);
+    Vec s(m + 1, 0);
 
     // Upper case name for matrix, V = V^t, R = Q^t * H
-    Mat V(size, size, 0);
-    Mat R(size + 1, size, 0);
+    Mat V(m, size, 0);
+    Mat R(size + 1, m, 0);
 
-    // size can be subsitude by m
     for(int i = 0; i < size; i++)
     {
-        if(norm_2(r_i) < tol) break;
+        type beta = norm_2(r_i);
+        Vec  v_i  = r_i / beta;
+        Vec  e_i  = e_1 * beta;
 
-        // Add v_i to V
-        row(V, i) = v_i;
-
-        // Build R_i
-        SubMat V_i(V, range(0, i + 1), range(0, size));
-        SubMat R_i(R, range(0, i + 2), range(0, i + 1));
-
-        v_i = prod(A, v_i);
-        for(int j = 0; j <= i; j++)
+        int dim = 0;
+        V.clear();
+        for(int j = 0; j < m; j++)
         {
-            R(j, i) = inner_prod(v_i, row(V, j));
-            v_i    -= R(j, i) * row(V, j);
+            row(V, j) = v_i;
+            v_i       = prod(A, v_i);
+            for(int k = 0; k <= j; k++)
+            {
+                R(k, j) = inner_prod(v_i, row(V, k));
+                v_i    -= R(k, j) * row(V, k);
+            }
+
+            R(j + 1, j) = norm_2(v_i);
+
+            dim++;
+            if(R(j + 1, j) > tol)
+            {
+                v_i /= R(j + 1, j);
+            }
+            else
+            {
+                R(j + 1, j) = (type) 0;
+                v_i.clear();
+                break;
+            }
         }
 
-        R(i + 1, i) = norm_2(v_i);
-        v_i        /= R(i + 1, i);
-
-        // Apply Givens rotation
-        for(int j = 0; j < i; j++)
+        // Apply givens rotation
+        for(int j = 0; j < m; j++)
         {
-            type temp   = c(j) * R(j, i) - s(j) * R(j + 1, i);
-            R(j + 1, i) = c(j) * R(j + 1, i) + s(j) * R(j ,i);
-            R(j, i)     = temp;
+            type r = std::sqrt(R(j, j) * R(j, j) + R(j + 1, j) * R(j + 1, j));
+            if(r > tol)
+            {
+                c(j)   = R(j, j)     / r;
+                s(j)   = R(j + 1, j) / r;
+            }
+            else
+            {
+                c(j) = (type) 1;
+                s(j) = (type) 0;
+            }
+
+            rotate(c(j), s(j), R(j, j), R(j + 1, j));
+            rotate(c(j), s(j), e_i(j), e_i(j + 1));
         }
-
-        type ratio = std::sqrt(R(i + 1, i) * R(i + 1, i) + R(i, i) * R(i, i));
-
-        c(i) =  R(i, i) / ratio;
-        s(i) = -R(i + 1, i) / ratio;
-
-        // R(i, i) = sqrt(r^2 + h^2)
-        R(i, i)     = ratio;
-        R(i + 1, i) = (type) 0;
-
-        // Apply rotation on e_i
-        type rot_tmp = c(i) * e_i(i) - s(i) * e_i(i + 1);
-        e_i(i + 1)   = c(i) * e_i(i + 1) + s(i) * e_i(i);
-        e_i(i)       = rot_tmp;
 
         // Solve for y_i
-        Vec y_i(solve(subrange(R, 0, i + 1, 0, i + 1), subrange(e_i, 0, i + 1), upper_tag()));
+        Vec y_i(solve(subrange(R, 0, dim, 0, dim), subrange(e_i, 0, dim), upper_tag()));
 
         // Update x
-        x_i += prod(y_i, V_i);
+        x_i += prod(y_i, subrange(V, 0, dim, 0, size));
         r_i  = y - prod(A, x_i);
+
+        if(norm_2(r_i) < tol) break;
     }
 
     x = x_i;
@@ -95,6 +115,8 @@ int gmres(ublas::vector<type> &y, ublas::matrix<type> &A, ublas::vector<type> &x
 
 int main(int argc, char **argv)
 {
+    std::cout.precision(15);
+
     int size, nnz;
     std::string filename;
     if(argc == 2) filename = argv[1];
@@ -122,7 +144,7 @@ int main(int argc, char **argv)
     }
 
     // GMRES
-    if(gmres(y, A, x, 1e-8) != 0)
+    if(gmres(y, A, x, 1e-12, y.size()) != 0)
     {
         std::cout << "GMRES not converged" << std::endl;
     }
