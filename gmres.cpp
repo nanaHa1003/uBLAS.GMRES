@@ -65,6 +65,14 @@ int gmres(ublas::vector<type> &y, ublas::matrix<type> &A, ublas::vector<type> &x
                 v_i    -= R(k, j) * row(V, k);
             }
 
+            // Re-orthogonalization
+            #pragma omp parallel for
+            for(int k = 0; k <= j; k++)
+            {
+                type tmp   = inner_prod(v_i, row(V, k));
+                row(V, k) -= tmp * v_i;
+            }
+
             R(j + 1, j) = norm_2(v_i);
 
             dim++;
